@@ -23,6 +23,19 @@ const selfHostedRolledBack = {
   eventsExportAvailable: false,
   forceEventsExport: false,
 };
+// Self-hosted events_only: v3 tables are no longer written, so legacy sources
+// are forced to EVENTS by write-mode capability (LFE-10148). Enriched stays
+// available (events_only requires the V4 preview opt-in).
+const selfHostedEventsOnly = {
+  eventsExportAvailable: true,
+  forceEventsExport: true,
+};
+// Self-hosted legacy/dual with the enriched preview enabled: everything stays
+// selectable — legacy is not forced because the v3 tables are still written.
+const selfHostedLegacyOrDual = {
+  eventsExportAvailable: true,
+  forceEventsExport: false,
+};
 
 describe("getExportSourceFormValue", () => {
   it("keeps a persisted enriched value when enriched export is unavailable (LFE-10296)", () => {
@@ -73,6 +86,24 @@ describe("getExportSourceFormValue", () => {
     expect(getExportSourceFormValue(undefined, selfHostedRolledBack)).toBe(
       AnalyticsIntegrationExportSource.TRACES_OBSERVATIONS,
     );
+  });
+
+  it("defaults new configurations to EVENTS on self-hosted events_only (LFE-10148)", () => {
+    expect(getExportSourceFormValue(undefined, selfHostedEventsOnly)).toBe(
+      AnalyticsIntegrationExportSource.EVENTS,
+    );
+    expect(getExportSourceFormValue(null, selfHostedEventsOnly)).toBe(
+      AnalyticsIntegrationExportSource.EVENTS,
+    );
+  });
+
+  it("keeps a persisted legacy value on self-hosted events_only (blocked save, not rewritten)", () => {
+    expect(
+      getExportSourceFormValue(
+        AnalyticsIntegrationExportSource.TRACES_OBSERVATIONS,
+        selfHostedEventsOnly,
+      ),
+    ).toBe(AnalyticsIntegrationExportSource.TRACES_OBSERVATIONS);
   });
 });
 
@@ -125,7 +156,32 @@ describe("isExportSourceSelectable", () => {
       expect(isExportSourceSelectable(source, selfHostedWithPreview)).toBe(
         true,
       );
+      // Self-hosted legacy/dual: legacy stays selectable (v3 tables still written).
+      expect(isExportSourceSelectable(source, selfHostedLegacyOrDual)).toBe(
+        true,
+      );
     }
+  });
+
+  it("rejects legacy sources on self-hosted events_only, keeps EVENTS (LFE-10148)", () => {
+    expect(
+      isExportSourceSelectable(
+        AnalyticsIntegrationExportSource.TRACES_OBSERVATIONS,
+        selfHostedEventsOnly,
+      ),
+    ).toBe(false);
+    expect(
+      isExportSourceSelectable(
+        AnalyticsIntegrationExportSource.TRACES_OBSERVATIONS_EVENTS,
+        selfHostedEventsOnly,
+      ),
+    ).toBe(false);
+    expect(
+      isExportSourceSelectable(
+        AnalyticsIntegrationExportSource.EVENTS,
+        selfHostedEventsOnly,
+      ),
+    ).toBe(true);
   });
 });
 
@@ -156,6 +212,24 @@ describe("getExportSourceOptions", () => {
     expect(options.map((o) => o.value)).toEqual([
       AnalyticsIntegrationExportSource.EVENTS,
     ]);
+  });
+
+  it("marks a persisted legacy source unavailable on self-hosted events_only (LFE-10148)", () => {
+    const options = getExportSourceOptions(
+      AnalyticsIntegrationExportSource.TRACES_OBSERVATIONS,
+      selfHostedEventsOnly,
+    );
+    // Persisted legacy source surfaces as a visible unavailable option, never
+    // silently rewritten; EVENTS stays selectable.
+    expect(
+      options.find(
+        (o) => o.value === AnalyticsIntegrationExportSource.TRACES_OBSERVATIONS,
+      )?.unavailable,
+    ).toBe(true);
+    expect(
+      options.find((o) => o.value === AnalyticsIntegrationExportSource.EVENTS)
+        ?.unavailable,
+    ).toBe(false);
   });
 
   it("includes a stale persisted enriched source, marked unavailable (LFE-10296)", () => {

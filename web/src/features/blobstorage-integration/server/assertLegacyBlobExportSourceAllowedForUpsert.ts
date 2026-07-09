@@ -1,4 +1,5 @@
 import {
+  type BlobExportWriteMode,
   InvalidRequestError,
   isLegacyBlobExporter,
   LEGACY_BLOB_EXPORT_SOURCES,
@@ -9,34 +10,42 @@ import { assertLegacyBlobExportSourceAllowed } from "@/src/features/blobstorage-
 
 /**
  * Write-time gate for blob storage upserts, shared by the tRPC and REST paths.
- * Composes the project-level post-cutoff gate
- * (`assertLegacyBlobExportSourceAllowed`) with the integration-level cutoff: a
- * row may only keep using a legacy export source if its own `createdAt`
- * predates `LEGACY_BLOB_EXPORTER_CUTOFF`.
+ * Composes the project-level gate (`assertLegacyBlobExportSourceAllowed`) with
+ * the integration-level cutoff: a row may only keep using a legacy export source
+ * if its own `createdAt` predates `LEGACY_BLOB_EXPORTER_CUTOFF`.
  *
  * `existingIntegration` is `null` for a brand-new integration, which is treated
  * as non-legacy (new-customer rules) by `isLegacyBlobExporter`.
  *
- * Keyed on `isCloud` directly, not on enriched-export availability: self-hosted
- * stays exempt even with the V4 preview enabled (see blob-export-gate.ts).
+ * Two independent gates apply here:
+ * - The DATE-BASED cutoffs are Cloud-only, permanently — keyed on `isCloud`
+ *   directly, so self-hosted stays exempt even with the V4 preview enabled.
+ * - The WRITE-MODE (data-capability) gate is deployment-agnostic: it refuses
+ *   legacy sources under `events_only` on both Cloud and self-hosted, because the
+ *   v3 traces/observations tables are no longer written then. This is enforced
+ *   inside `assertLegacyBlobExportSourceAllowed` via the `writeMode` arg
+ *   (LFE-10148). See blob-export-gate.ts for the recorded policy.
  */
 export function assertLegacyBlobExportSourceAllowedForUpsert({
   project,
   existingIntegration,
   nextInternalExportSource,
   isCloud,
+  writeMode,
 }: {
   project: { createdAt: Date };
   existingIntegration: { createdAt: Date } | null;
   nextInternalExportSource: AnalyticsIntegrationExportSource;
   isCloud: boolean;
+  writeMode: BlobExportWriteMode;
 }): void {
-  // Project-level post-cutoff gate first (shared with REST). Throws on a
-  // post-cutoff Cloud project + legacy source regardless of the row's age.
+  // Project-level gate first (shared with REST). Throws on a post-cutoff Cloud
+  // project + legacy source, or on any deployment running events_only.
   assertLegacyBlobExportSourceAllowed({
     project,
     nextInternalExportSource,
     isCloud,
+    writeMode,
   });
 
   if (

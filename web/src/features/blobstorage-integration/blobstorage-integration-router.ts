@@ -32,6 +32,7 @@ import {
   BlobStorageIntegrationFileType,
   InvalidRequestError,
   isEnrichedBlobExportAvailable,
+  isLegacyBlobExportWriteModeAllowed,
 } from "@langfuse/shared";
 
 const getAuditLogErrorType = (error: unknown) =>
@@ -79,6 +80,11 @@ export const blobStorageIntegrationRouter = createTRPCRouter({
           isCloud,
           env.LANGFUSE_MIGRATION_V4_ALLOW_PREVIEW_OPT_IN === "true",
         );
+        // Data-capability gate: false when the deployment runs events_only, so the
+        // form marks legacy sources unavailable (v3 tables no longer written).
+        const isLegacyWriteModeAllowed = isLegacyBlobExportWriteModeAllowed(
+          env.LANGFUSE_MIGRATION_V4_WRITE_MODE,
+        );
 
         const config = await ctx.prisma.blobStorageIntegration.findFirst({
           where: {
@@ -89,7 +95,11 @@ export const blobStorageIntegrationRouter = createTRPCRouter({
           },
         });
 
-        return { config: config ?? null, isEnrichedExportAvailable };
+        return {
+          config: config ?? null,
+          isEnrichedExportAvailable,
+          isLegacyWriteModeAllowed,
+        };
       } catch (e) {
         logger.error(`Failed to get blob storage integration`, e);
         throw new TRPCError({
@@ -125,6 +135,7 @@ export const blobStorageIntegrationRouter = createTRPCRouter({
         const isCloud = Boolean(env.NEXT_PUBLIC_LANGFUSE_CLOUD_REGION);
         const isV4PreviewEnabled =
           env.LANGFUSE_MIGRATION_V4_ALLOW_PREVIEW_OPT_IN === "true";
+        const writeMode = env.LANGFUSE_MIGRATION_V4_WRITE_MODE;
 
         const existingIntegration =
           await ctx.prisma.blobStorageIntegration.findUnique({
@@ -144,6 +155,7 @@ export const blobStorageIntegrationRouter = createTRPCRouter({
             existingIntegration,
             nextInternalExportSource: input.exportSource,
             isCloud,
+            writeMode,
           });
         }
 

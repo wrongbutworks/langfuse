@@ -4,10 +4,15 @@
 import { AnalyticsIntegrationExportSource } from "@prisma/client";
 
 // Cloud projects created on or after this instant cannot use legacy export sources.
-// Both cutoffs in this file are Cloud-only by design (the `!isCloud` short-circuits
-// below): self-hosted instances can enable the enriched export via the V4 preview
-// opt-in, but that must not activate these cutoffs — deprecating legacy sources
-// on self-hosted is a separate, still-open decision.
+// Both date-based cutoffs in this file are Cloud-only by design, permanently (the
+// `!isCloud` short-circuits below). Cloud's cutoff dates are arbitrary from a
+// self-hosted operator's perspective; on self-hosted, legacy-source availability
+// follows DATA CAPABILITY — whether the deployment still writes the v3
+// traces/observations tables — not calendar dates. That capability is expressed by
+// the write mode: see `isLegacyBlobExportWriteModeAllowed` below, which forces
+// EVENTS under `events_only` (v3 tables no longer written) regardless of Cloud/
+// self-hosted. Enabling the enriched export via the V4 preview opt-in does NOT
+// activate these date cutoffs (LFE-10148, LFE-10065).
 // NEXT_PUBLIC_LANGFUSE_BLOB_EXPORT_CUTOFF overrides the default for local dev testing.
 const _override = process.env.NEXT_PUBLIC_LANGFUSE_BLOB_EXPORT_CUTOFF
   ? new Date(process.env.NEXT_PUBLIC_LANGFUSE_BLOB_EXPORT_CUTOFF)
@@ -74,6 +79,18 @@ export function isEnrichedBlobExportSource(
   );
 }
 
+/** Whether the source reads the v3 traces/observations tables. */
+export function isLegacyBlobExportSource(
+  source: AnalyticsIntegrationExportSource | null | undefined,
+): boolean {
+  return (
+    source != null &&
+    (
+      LEGACY_BLOB_EXPORT_SOURCES as readonly AnalyticsIntegrationExportSource[]
+    ).includes(source)
+  );
+}
+
 /**
  * Whether a blob storage integration row counts as legacy — i.e. may still use
  * legacy export sources. Applied to `BlobStorageIntegration.createdAt`.
@@ -103,4 +120,34 @@ export function isEnrichedBlobExportAvailable(
   isV4PreviewEnabled?: boolean,
 ): boolean {
   return isCloud || isV4PreviewEnabled === true;
+}
+
+/**
+ * V4 write mode of the deployment. Mirrors the `LANGFUSE_MIGRATION_V4_WRITE_MODE`
+ * enum owned by the env schemas; kept as a literal union here so this client-safe
+ * file has no dependency on server env parsing.
+ */
+export type BlobExportWriteMode = "legacy" | "dual" | "events_only";
+
+/**
+ * Whether the deployment may still use legacy blob export sources
+ * (`TRACES_OBSERVATIONS`, `TRACES_OBSERVATIONS_EVENTS`) based on data capability.
+ *
+ * Legacy sources read the v3 traces/observations tables. Those tables are written
+ * while the deployment runs in `legacy` or `dual` write mode, but under
+ * `events_only` they are no longer populated — so a legacy source would silently
+ * export stale/empty data. Returns false in that case to force EVENTS.
+ *
+ * Deployment-agnostic and driven by write mode only: the data capability is what
+ * matters, so Cloud and self-hosted follow the same rule. (Cloud does not run
+ * `events_only` for this purpose today, so Cloud behavior is unaffected; if it
+ * ever does, forcing EVENTS is the correct, self-consistent outcome.) The
+ * date-based cutoffs above remain a separate, Cloud-only gate. Shared by the UI,
+ * the server upsert asserts, and the worker guard so the predicate lives once
+ * (LFE-10148).
+ */
+export function isLegacyBlobExportWriteModeAllowed(
+  writeMode: BlobExportWriteMode,
+): boolean {
+  return writeMode !== "events_only";
 }

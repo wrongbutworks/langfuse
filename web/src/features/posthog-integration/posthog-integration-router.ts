@@ -95,6 +95,7 @@ export const posthogIntegrationRouter = createTRPCRouter({
           project,
           nextInternalExportSource: input.exportSource,
           isCloud: Boolean(env.NEXT_PUBLIC_LANGFUSE_CLOUD_REGION),
+          writeMode: env.LANGFUSE_MIGRATION_V4_WRITE_MODE,
         });
       }
 

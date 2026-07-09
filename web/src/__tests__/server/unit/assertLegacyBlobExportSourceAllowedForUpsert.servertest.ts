@@ -29,6 +29,7 @@ describe("assertLegacyBlobExportSourceAllowedForUpsert", () => {
         existingIntegration: null,
         nextInternalExportSource: "TRACES_OBSERVATIONS",
         isCloud: true,
+        writeMode: "legacy",
       }),
     ).toThrow();
   });
@@ -40,6 +41,7 @@ describe("assertLegacyBlobExportSourceAllowedForUpsert", () => {
         existingIntegration: { createdAt: INTEGRATION_PRE_CUTOFF },
         nextInternalExportSource: "TRACES_OBSERVATIONS",
         isCloud: true,
+        writeMode: "legacy",
       }),
     ).not.toThrow();
   });
@@ -51,6 +53,7 @@ describe("assertLegacyBlobExportSourceAllowedForUpsert", () => {
         existingIntegration: null,
         nextInternalExportSource: "TRACES_OBSERVATIONS",
         isCloud: true,
+        writeMode: "legacy",
       }),
     ).toThrow();
   });
@@ -62,6 +65,7 @@ describe("assertLegacyBlobExportSourceAllowedForUpsert", () => {
         existingIntegration: { createdAt: INTEGRATION_PRE_CUTOFF },
         nextInternalExportSource: "TRACES_OBSERVATIONS",
         isCloud: true,
+        writeMode: "legacy",
       }),
     ).toThrow();
   });
@@ -73,6 +77,7 @@ describe("assertLegacyBlobExportSourceAllowedForUpsert", () => {
         existingIntegration: null,
         nextInternalExportSource: "EVENTS",
         isCloud: true,
+        writeMode: "legacy",
       }),
     ).not.toThrow();
   });
@@ -84,6 +89,7 @@ describe("assertLegacyBlobExportSourceAllowedForUpsert", () => {
         existingIntegration: null,
         nextInternalExportSource: "TRACES_OBSERVATIONS",
         isCloud: false,
+        writeMode: "legacy",
       }),
     ).not.toThrow();
   });
@@ -95,6 +101,7 @@ describe("assertLegacyBlobExportSourceAllowedForUpsert", () => {
         existingIntegration: null,
         nextInternalExportSource: "TRACES_OBSERVATIONS_EVENTS",
         isCloud: true,
+        writeMode: "legacy",
       }),
     ).toThrow();
   });
@@ -106,7 +113,58 @@ describe("assertLegacyBlobExportSourceAllowedForUpsert", () => {
         existingIntegration: { createdAt: INTEGRATION_AT_CUTOFF },
         nextInternalExportSource: "TRACES_OBSERVATIONS",
         isCloud: true,
+        writeMode: "legacy",
       }),
     ).toThrow();
+  });
+
+  // LFE-10148: events_only no longer writes the v3 tables, so legacy sources are
+  // refused regardless of Cloud/self-hosted or the date cutoffs.
+  it("self-hosted + pre-cutoff project + events_only + legacy → throws", () => {
+    expect(() =>
+      assertLegacyBlobExportSourceAllowedForUpsert({
+        project: { createdAt: PROJECT_PRE_CUTOFF },
+        existingIntegration: { createdAt: INTEGRATION_PRE_CUTOFF },
+        nextInternalExportSource: "TRACES_OBSERVATIONS",
+        isCloud: false,
+        writeMode: "events_only",
+      }),
+    ).toThrow(/events_only/);
+  });
+
+  it("Cloud + pre-cutoff project + events_only + TRACES_OBSERVATIONS_EVENTS → throws", () => {
+    expect(() =>
+      assertLegacyBlobExportSourceAllowedForUpsert({
+        project: { createdAt: PROJECT_PRE_CUTOFF },
+        existingIntegration: { createdAt: INTEGRATION_PRE_CUTOFF },
+        nextInternalExportSource: "TRACES_OBSERVATIONS_EVENTS",
+        isCloud: true,
+        writeMode: "events_only",
+      }),
+    ).toThrow(/events_only/);
+  });
+
+  it("self-hosted + events_only + EVENTS → allows", () => {
+    expect(() =>
+      assertLegacyBlobExportSourceAllowedForUpsert({
+        project: { createdAt: PROJECT_PRE_CUTOFF },
+        existingIntegration: { createdAt: INTEGRATION_PRE_CUTOFF },
+        nextInternalExportSource: "EVENTS",
+        isCloud: false,
+        writeMode: "events_only",
+      }),
+    ).not.toThrow();
+  });
+
+  it("self-hosted + dual write mode + legacy → allows (v3 tables still written)", () => {
+    expect(() =>
+      assertLegacyBlobExportSourceAllowedForUpsert({
+        project: { createdAt: PROJECT_POST_CUTOFF },
+        existingIntegration: { createdAt: INTEGRATION_PRE_CUTOFF },
+        nextInternalExportSource: "TRACES_OBSERVATIONS",
+        isCloud: false,
+        writeMode: "dual",
+      }),
+    ).not.toThrow();
   });
 });

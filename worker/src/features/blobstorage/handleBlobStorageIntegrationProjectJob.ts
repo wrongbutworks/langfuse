@@ -58,6 +58,8 @@ import {
   type ObservationFieldGroupFull,
   isEnrichedBlobExportAvailable,
   isEnrichedBlobExportSource,
+  isLegacyBlobExportSource,
+  isLegacyBlobExportWriteModeAllowed,
   resolveBlobExportTuning,
   DEFAULT_BLOB_EXPORT_PART_SIZE_BYTES,
 } from "@langfuse/shared";
@@ -1147,6 +1149,19 @@ export const handleBlobStorageIntegrationProjectJob = async (
     ) {
       throw new Error(
         "The configured export source includes enriched observations, but enriched export is not available on this deployment. Select a different export source in the blob storage integration settings, or re-enable enriched export (V4 preview opt-in) on this deployment.",
+      );
+    }
+
+    // Symmetric legacy-side guard (LFE-10148): under events_only the v3
+    // traces/observations tables are no longer written, so a persisted legacy
+    // source would silently export stale/empty data. Fail loudly instead — the
+    // catch persists lastError and notifies admins.
+    if (
+      isLegacyBlobExportSource(blobStorageIntegration.exportSource) &&
+      !isLegacyBlobExportWriteModeAllowed(env.LANGFUSE_MIGRATION_V4_WRITE_MODE)
+    ) {
+      throw new Error(
+        "The configured export source reads the legacy traces/observations tables, but this deployment runs LANGFUSE_MIGRATION_V4_WRITE_MODE=events_only and no longer writes them. Select the enriched export source (OBSERVATIONS_V2) in the blob storage integration settings.",
       );
     }
 

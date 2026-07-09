@@ -161,6 +161,7 @@ async function handleUpsertBlobStorageIntegration(
 
   const isV4PreviewEnabled =
     env.LANGFUSE_MIGRATION_V4_ALLOW_PREVIEW_OPT_IN === "true";
+  const writeMode = env.LANGFUSE_MIGRATION_V4_WRITE_MODE;
   const internalExportSource =
     validatedData.exportSource != null
       ? toInternalExportSource(validatedData.exportSource)
@@ -181,6 +182,7 @@ async function handleUpsertBlobStorageIntegration(
       existingIntegration,
       nextInternalExportSource: internalExportSource,
       isCloud,
+      writeMode,
     });
   }
 

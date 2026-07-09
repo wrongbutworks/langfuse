@@ -243,6 +243,9 @@ export default function BlobStorageIntegrationSettings() {
               isEnrichedExportAvailable={
                 state.data?.isEnrichedExportAvailable ?? false
               }
+              isLegacyWriteModeAllowed={
+                state.data?.isLegacyWriteModeAllowed ?? true
+              }
             />
           </Card>
         </>
@@ -256,11 +259,13 @@ const BlobStorageIntegrationSettingsForm = ({
   projectId,
   isLoading,
   isEnrichedExportAvailable,
+  isLegacyWriteModeAllowed,
 }: {
   state?: Partial<BlobStorageIntegration>;
   projectId: string;
   isLoading: boolean;
   isEnrichedExportAvailable: boolean;
+  isLegacyWriteModeAllowed: boolean;
 }) => {
   const capture = usePostHogClientCapture();
   const { isLangfuseCloud } = useLangfuseCloudRegion();
@@ -279,8 +284,14 @@ const BlobStorageIntegrationSettingsForm = ({
     state?.createdAt ? new Date(state.createdAt) : null,
     isLangfuseCloud,
   );
+  // events_only deployments no longer write the v3 traces/observations tables,
+  // so legacy sources must be forced to EVENTS regardless of Cloud/self-hosted
+  // (LFE-10148). The persisted legacy value still surfaces as a visible
+  // unavailable option with a blocked save (LFE-10296), never silently rewritten.
   const forceEventsExport =
-    isPostCutoffCloud || (eventsExportAvailable && !isLegacyExporter);
+    isPostCutoffCloud ||
+    !isLegacyWriteModeAllowed ||
+    (eventsExportAvailable && !isLegacyExporter);
   const availability = useMemo(
     () => ({ eventsExportAvailable, forceEventsExport }),
     [eventsExportAvailable, forceEventsExport],

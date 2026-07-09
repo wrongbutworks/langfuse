@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { assertLegacyBlobExportSourceAllowed } from "@/src/features/blobstorage-integration/server/assertLegacyBlobExportSourceAllowed";
 import {
   isLegacyBlobExportAllowed,
+  isLegacyBlobExportWriteModeAllowed,
   LEGACY_BLOB_EXPORT_CUTOFF,
 } from "@langfuse/shared";
 
@@ -17,6 +18,7 @@ describe("assertLegacyBlobExportSourceAllowed", () => {
         project: { createdAt: PRE_CUTOFF },
         nextInternalExportSource: "EVENTS",
         isCloud: true,
+        writeMode: "legacy",
       }),
     ).not.toThrow();
   });
@@ -27,6 +29,7 @@ describe("assertLegacyBlobExportSourceAllowed", () => {
         project: { createdAt: POST_CUTOFF },
         nextInternalExportSource: "EVENTS",
         isCloud: true,
+        writeMode: "legacy",
       }),
     ).not.toThrow();
   });
@@ -37,6 +40,7 @@ describe("assertLegacyBlobExportSourceAllowed", () => {
         project: { createdAt: PRE_CUTOFF },
         nextInternalExportSource: "TRACES_OBSERVATIONS",
         isCloud: true,
+        writeMode: "legacy",
       }),
     ).not.toThrow();
   });
@@ -47,6 +51,7 @@ describe("assertLegacyBlobExportSourceAllowed", () => {
         project: { createdAt: POST_CUTOFF },
         nextInternalExportSource: "TRACES_OBSERVATIONS",
         isCloud: true,
+        writeMode: "legacy",
       }),
     ).toThrow();
   });
@@ -57,6 +62,7 @@ describe("assertLegacyBlobExportSourceAllowed", () => {
         project: { createdAt: POST_CUTOFF },
         nextInternalExportSource: "TRACES_OBSERVATIONS_EVENTS",
         isCloud: true,
+        writeMode: "legacy",
       }),
     ).toThrow();
   });
@@ -67,6 +73,7 @@ describe("assertLegacyBlobExportSourceAllowed", () => {
         project: { createdAt: POST_CUTOFF },
         nextInternalExportSource: "EVENTS",
         isCloud: false,
+        writeMode: "legacy",
       }),
     ).not.toThrow();
   });
@@ -77,6 +84,7 @@ describe("assertLegacyBlobExportSourceAllowed", () => {
         project: { createdAt: PRE_CUTOFF },
         nextInternalExportSource: "TRACES_OBSERVATIONS",
         isCloud: false,
+        writeMode: "legacy",
       }),
     ).not.toThrow();
   });
@@ -87,6 +95,7 @@ describe("assertLegacyBlobExportSourceAllowed", () => {
         project: { createdAt: POST_CUTOFF },
         nextInternalExportSource: "TRACES_OBSERVATIONS",
         isCloud: false,
+        writeMode: "legacy",
       }),
     ).not.toThrow();
   });
@@ -97,8 +106,51 @@ describe("assertLegacyBlobExportSourceAllowed", () => {
         project: { createdAt: AT_CUTOFF },
         nextInternalExportSource: "TRACES_OBSERVATIONS",
         isCloud: true,
+        writeMode: "legacy",
       }),
     ).toThrow();
+  });
+
+  // LFE-10148: events_only forces EVENTS regardless of Cloud/self-hosted or dates.
+  it("self-hosted + TRACES_OBSERVATIONS + pre-cutoff + events_only → reject", () => {
+    expect(() =>
+      assertLegacyBlobExportSourceAllowed({
+        project: { createdAt: PRE_CUTOFF },
+        nextInternalExportSource: "TRACES_OBSERVATIONS",
+        isCloud: false,
+        writeMode: "events_only",
+      }),
+    ).toThrow(/events_only/);
+  });
+
+  it("self-hosted + EVENTS + events_only → allow", () => {
+    expect(() =>
+      assertLegacyBlobExportSourceAllowed({
+        project: { createdAt: PRE_CUTOFF },
+        nextInternalExportSource: "EVENTS",
+        isCloud: false,
+        writeMode: "events_only",
+      }),
+    ).not.toThrow();
+  });
+
+  it("self-hosted + TRACES_OBSERVATIONS + dual → allow (v3 tables written)", () => {
+    expect(() =>
+      assertLegacyBlobExportSourceAllowed({
+        project: { createdAt: PRE_CUTOFF },
+        nextInternalExportSource: "TRACES_OBSERVATIONS",
+        isCloud: false,
+        writeMode: "dual",
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe("isLegacyBlobExportWriteModeAllowed predicate", () => {
+  it("legacy and dual allow legacy sources; events_only does not", () => {
+    expect(isLegacyBlobExportWriteModeAllowed("legacy")).toBe(true);
+    expect(isLegacyBlobExportWriteModeAllowed("dual")).toBe(true);
+    expect(isLegacyBlobExportWriteModeAllowed("events_only")).toBe(false);
   });
 });
 

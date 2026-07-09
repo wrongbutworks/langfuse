@@ -7,6 +7,7 @@ import {
   LEGACY_BLOB_EXPORT_SOURCES,
   LEGACY_BLOB_EXPORTER_CUTOFF,
   isLegacyBlobExporter,
+  isLegacyBlobExportWriteModeAllowed,
   BlobStorageIntegrationFileType,
   type ObservationFieldGroupFull,
 } from "@langfuse/shared";
@@ -147,9 +148,16 @@ export async function upsertBlobStorageIntegration(params: {
     // at INSERT time regardless of what findUnique saw. UPDATE uses
     // writeData.exportSource (undefined → Prisma omits the column → preserves
     // the existing value), so the caller intent is always honored on both paths.
+    // Under events_only the v3 tables are not written, so a new row must never
+    // fall back to the legacy Prisma column default; force EVENTS in-transaction
+    // (deployment-agnostic; symmetric with the Cloud forceEventsOnCreate). No
+    // TOCTOU: the write mode is deployment-constant env, not per-row state.
+    const forceEventsForWriteMode = !isLegacyBlobExportWriteModeAllowed(
+      env.LANGFUSE_MIGRATION_V4_WRITE_MODE,
+    );
     const createExportSource =
       data.exportSource ??
-      (params.forceEventsOnCreate
+      (params.forceEventsOnCreate || forceEventsForWriteMode
         ? AnalyticsIntegrationExportSource.EVENTS
         : undefined);
 
@@ -200,6 +208,23 @@ export async function upsertBlobStorageIntegration(params: {
     ) {
       throw new InvalidRequestError(
         `Legacy export sources are not available for blob storage integrations created on or after ${LEGACY_BLOB_EXPORTER_CUTOFF.toISOString()} on Cloud. Use 'OBSERVATIONS_V2' instead.`,
+      );
+    }
+
+    // Race-free events_only backstop (deployment-agnostic). The pre-flight
+    // asserts only run when the caller passes an explicit exportSource; an UPDATE
+    // that omits it, or a concurrent DELETE flipping this to a CREATE, could still
+    // persist a legacy source while the v3 tables are no longer written. Validate
+    // the persisted row and roll back if it carries a legacy source under
+    // events_only (LFE-10148).
+    if (
+      forceEventsForWriteMode &&
+      (LEGACY_BLOB_EXPORT_SOURCES as ReadonlyArray<string>).includes(
+        result.exportSource,
+      )
+    ) {
+      throw new InvalidRequestError(
+        "Legacy export sources are not available while LANGFUSE_MIGRATION_V4_WRITE_MODE=events_only, because the legacy traces/observations tables are no longer written. Use 'OBSERVATIONS_V2' instead.",
       );
     }
 

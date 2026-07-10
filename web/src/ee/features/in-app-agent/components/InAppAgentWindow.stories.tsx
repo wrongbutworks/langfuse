@@ -900,7 +900,6 @@ export const FeedbackControlsShowAfterTurnEnd = meta.story({
   name: "(Test) Feedback Controls Show After Turn End",
   args: {
     selectedConversationId: "conversation-1",
-    isInputDisabled: false,
     isAssistantTurnInProgress: false,
     onSubmitFeedback: fn(),
     messages: [
@@ -961,7 +960,10 @@ export const Connecting = meta.story({
 
 export const Error = meta.story({
   args: {
-    error: "Assistant is not enabled for this user",
+    error: {
+      type: "generic",
+      message: "Assistant is not enabled for this user",
+    },
     messages: [
       {
         id: "user-1",
@@ -972,6 +974,38 @@ export const Error = meta.story({
         },
       },
     ],
+  },
+});
+
+export const RateLimited = meta.story({
+  args: {
+    error: {
+      type: "rate_limit",
+      retryAt: Date.now() + 12_000,
+    },
+    messages: [],
+  },
+  play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+    const canvas = within(canvasElement);
+
+    await expect(canvas.getByRole("alert")).toHaveTextContent(
+      "You've reached the assistant request limit",
+    );
+    await expect(canvas.getByRole("alert")).toHaveTextContent(
+      "Try again in about",
+    );
+    await expect(
+      canvas.getByRole("textbox", { name: "Ask the assistant a question" }),
+    ).toBeDisabled();
+    await expect(
+      canvas.getByRole("button", { name: "Get started with Langfuse" }),
+    ).toBeDisabled();
+    await expect(
+      canvas.getByRole("button", { name: "Start new conversation" }),
+    ).toBeEnabled();
+    await expect(
+      canvas.getByRole("button", { name: "Conversation history" }),
+    ).toBeEnabled();
   },
 });
 

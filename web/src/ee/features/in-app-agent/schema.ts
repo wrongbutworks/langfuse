@@ -47,6 +47,26 @@ export type InAppAgentMessageFeedback = z.infer<
   typeof InAppAgentMessageFeedbackSchema
 >;
 
+export const InAppAgentErrorSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("generic"),
+    message: z.string(),
+  }),
+  z.object({
+    type: z.literal("rate_limit"),
+    retryAt: z.number().int().nonnegative(),
+  }),
+]);
+
+export type InAppAgentError = z.infer<typeof InAppAgentErrorSchema>;
+
+export const InAppAgentRateLimitErrorResponseSchema = z.object({
+  code: z.literal("rate_limited"),
+  details: z.object({
+    retryAfterSeconds: z.number().int().positive(),
+  }),
+});
+
 // Changes to this schema need to be backwards-compatible as messages with this are already persisted.
 export const InAppAgentRedirectActionToolResultSchema = z.object({
   type: z.literal("redirectAction"),

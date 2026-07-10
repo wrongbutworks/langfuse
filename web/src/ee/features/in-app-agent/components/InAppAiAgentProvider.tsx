@@ -10,7 +10,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { HttpAgent } from "@ag-ui/client";
+import { EventType, HttpAgent } from "@ag-ui/client";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import { z } from "zod";
@@ -22,6 +22,7 @@ import {
   createInAppAgentMessageId,
   createInAppAgentRunId,
 } from "@/src/ee/features/in-app-agent/ids";
+import { IN_APP_AGENT_REDIRECT_TOOL_NAME } from "@/src/ee/features/in-app-agent/constants";
 import {
   AgUiMessageSchema,
   type AgUiMessage,
@@ -88,6 +89,7 @@ const NOOP_CONTEXT: InAppAiAgentContextType = {
 };
 
 type InAppAiAgentMessage = AgUiMessage;
+type InAppAiAgentViewMessage = InAppAiAgentMessage & { isLoading?: boolean };
 
 type InAppAiAgentFeedbackByConversationId = Record<
   string,
@@ -117,7 +119,7 @@ type InAppAiAgentContextType = {
   pendingToolApprovals: InAppAgentPendingToolApproval[];
   isSelectedConversationHydrating: boolean;
   error: string | null;
-  messages: InAppAiAgentMessage[];
+  messages: InAppAiAgentViewMessage[];
   conversations: InAppAiAgentConversation[];
   hasMoreConversations: boolean;
   isLoadingMoreConversations: boolean;
@@ -222,6 +224,9 @@ function InAppAiAgentProviderInner({
   const [isRunning, setIsRunning] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingEventIds, setLoadingEventIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [error, setError] = useState<string | null>(null);
   const agentRef = useRef<HttpAgent | null>(null);
   const activeRunIdRef = useRef<string | null>(null);
@@ -260,16 +265,41 @@ function InAppAiAgentProviderInner({
   );
   const hasMoreConversations = conversationListQuery.hasNextPage === true;
   const isLoadingMoreConversations = conversationListQuery.isFetchingNextPage;
-  const messagesWithFeedback = useMemo(
-    () =>
-      mergeMessagesWithFeedback(
-        messages,
-        selectedConversationId
-          ? feedbackByConversationId[selectedConversationId]
-          : undefined,
-      ),
-    [feedbackByConversationId, messages, selectedConversationId],
-  );
+  const messagesWithUiState = useMemo(() => {
+    const messagesWithFeedback = mergeMessagesWithFeedback(
+      messages,
+      selectedConversationId
+        ? feedbackByConversationId[selectedConversationId]
+        : undefined,
+    );
+
+    return messagesWithFeedback.map((message) => {
+      if (message.role === "reasoning") {
+        return { ...message, isLoading: loadingEventIds.has(message.id) };
+      }
+
+      if (message.role !== "assistant") {
+        return message;
+      }
+
+      return {
+        ...message,
+        isLoading:
+          loadingEventIds.has(message.id) ||
+          (message.toolCalls?.some(
+            (toolCall) =>
+              toolCall.function.name !== IN_APP_AGENT_REDIRECT_TOOL_NAME &&
+              loadingEventIds.has(toolCall.id),
+          ) ??
+            false),
+      };
+    });
+  }, [
+    feedbackByConversationId,
+    loadingEventIds,
+    messages,
+    selectedConversationId,
+  ]);
   const fetchNextConversationsPage = conversationListQuery.fetchNextPage;
   const loadMoreConversations = useCallback(() => {
     if (!hasMoreConversations || isLoadingMoreConversations) {
@@ -320,24 +350,51 @@ function InAppAiAgentProviderInner({
     },
     [],
   );
+  const updateLoadingEvent = useCallback(
+    (eventId: string, isLoading: boolean) => {
+      setLoadingEventIds((currentIds) => {
+        if (currentIds.has(eventId) === isLoading) {
+          return currentIds;
+        }
 
-  const resetAgent = useCallback((options?: { preserveAgent?: boolean }) => {
-    if (options?.preserveAgent) {
-      return;
-    }
-
-    if (agentRef.current?.isRunning) {
-      intentionalAbortRef.current = true;
-    }
-
-    subscriptionRef.current?.unsubscribe();
-    subscriptionRef.current = null;
-    agentRef.current?.abortRun();
-    agentRef.current = null;
-    activeRunIdRef.current = null;
-    pendingToolApprovalsRef.current = [];
-    setPendingToolApprovals([]);
+        const nextIds = new Set(currentIds);
+        if (isLoading) {
+          nextIds.add(eventId);
+        } else {
+          nextIds.delete(eventId);
+        }
+        return nextIds;
+      });
+    },
+    [],
+  );
+  const clearLoadingEvents = useCallback(() => {
+    setLoadingEventIds((currentIds) =>
+      currentIds.size > 0 ? new Set() : currentIds,
+    );
   }, []);
+
+  const resetAgent = useCallback(
+    (options?: { preserveAgent?: boolean }) => {
+      if (options?.preserveAgent) {
+        return;
+      }
+
+      if (agentRef.current?.isRunning) {
+        intentionalAbortRef.current = true;
+      }
+
+      subscriptionRef.current?.unsubscribe();
+      subscriptionRef.current = null;
+      agentRef.current?.abortRun();
+      agentRef.current = null;
+      activeRunIdRef.current = null;
+      pendingToolApprovalsRef.current = [];
+      setPendingToolApprovals([]);
+      clearLoadingEvents();
+    },
+    [clearLoadingEvents],
+  );
 
   // Hydrate local state from the selected persisted conversation once it loads.
   useEffect(() => {
@@ -427,6 +484,42 @@ function InAppAiAgentProviderInner({
             activeRunIdRef.current = payload.event.runId;
           }
         },
+        onEvent: ({ event }) => {
+          if (
+            event.type === EventType.REASONING_MESSAGE_START ||
+            event.type === EventType.TEXT_MESSAGE_START
+          ) {
+            updateLoadingEvent(event.messageId, true);
+            return;
+          }
+
+          if (
+            event.type === EventType.REASONING_MESSAGE_END ||
+            event.type === EventType.TEXT_MESSAGE_END
+          ) {
+            updateLoadingEvent(event.messageId, false);
+            return;
+          }
+
+          if (event.type === EventType.TOOL_CALL_START) {
+            updateLoadingEvent(event.toolCallId, true);
+            return;
+          }
+
+          // TOOL_CALL_END only finishes argument streaming. The tool remains
+          // active until its result arrives.
+          if (event.type === EventType.TOOL_CALL_RESULT) {
+            updateLoadingEvent(event.toolCallId, false);
+            return;
+          }
+
+          if (
+            event.type === EventType.RUN_FINISHED ||
+            event.type === EventType.RUN_ERROR
+          ) {
+            clearLoadingEvents();
+          }
+        },
         onCustomEvent: ({ event }) => {
           const approvalRequest = parseInAppAgentInterruptEvent(event);
 
@@ -489,7 +582,7 @@ function InAppAiAgentProviderInner({
         },
       });
     },
-    [updatePendingToolApprovals],
+    [clearLoadingEvents, updateLoadingEvent, updatePendingToolApprovals],
   );
 
   const getOrCreateAgent = useCallback(
@@ -533,6 +626,7 @@ function InAppAiAgentProviderInner({
       conversationId: string,
       runParameters?: Parameters<HttpAgent["runAgent"]>[0],
     ) => {
+      clearLoadingEvents();
       setIsRunning(true);
       return agent
         .runAgent({
@@ -567,6 +661,7 @@ function InAppAiAgentProviderInner({
         })
         .finally(() => {
           const runId = activeRunIdRef.current;
+          clearLoadingEvents();
           setIsRunning(false);
           setMessages(
             attachActiveRunIdToAssistantMessages(
@@ -586,6 +681,7 @@ function InAppAiAgentProviderInner({
     },
     [
       projectId,
+      clearLoadingEvents,
       releaseSubmitLock,
       session.data?.user?.name,
       utils.inAppAgent.getConversation,
@@ -925,7 +1021,7 @@ function InAppAiAgentProviderInner({
       pendingToolApprovals,
       isSelectedConversationHydrating,
       error,
-      messages: messagesWithFeedback,
+      messages: messagesWithUiState,
       conversations,
       hasMoreConversations,
       isLoadingMoreConversations,
@@ -951,7 +1047,7 @@ function InAppAiAgentProviderInner({
       isSubmitting,
       deleteConversation,
       loadMoreConversations,
-      messagesWithFeedback,
+      messagesWithUiState,
       open,
       pendingToolApprovals,
       rejectToolCall,

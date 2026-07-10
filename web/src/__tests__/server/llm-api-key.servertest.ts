@@ -2,7 +2,7 @@ vi.mock("@langfuse/shared/src/server", async () => {
   const actual = await vi.importActual("@langfuse/shared/src/server");
   return {
     ...actual,
-    fetchLLMCompletion: vi.fn(),
+    generateLLMText: vi.fn(),
   };
 });
 
@@ -16,10 +16,10 @@ import { decrypt, encrypt } from "@langfuse/shared/encryption";
 import { AuthMethod } from "@/src/features/llm-api-key/types";
 import {
   createOrgProjectAndApiKey,
-  fetchLLMCompletion,
+  generateLLMText,
 } from "@langfuse/shared/src/server";
 
-const mockFetchLLMCompletion = vi.mocked(fetchLLMCompletion);
+const mockGenerateLLMText = vi.mocked(generateLLMText);
 
 describe("llmApiKey.all RPC", () => {
   let projectId: string;
@@ -62,7 +62,7 @@ describe("llmApiKey.all RPC", () => {
     const setup = await createOrgProjectAndApiKey();
     projectId = setup.projectId;
     orgId = setup.orgId;
-    mockFetchLLMCompletion.mockReset().mockResolvedValue({});
+    mockGenerateLLMText.mockReset().mockResolvedValue({} as never);
 
     session = {
       expires: "1",
@@ -477,7 +477,7 @@ describe("llmApiKey.all RPC", () => {
       success: false,
       error: "Secret key is required when changing the base URL",
     });
-    expect(mockFetchLLMCompletion).not.toHaveBeenCalled();
+    expect(mockGenerateLLMText).not.toHaveBeenCalled();
   });
 
   it("should allow testing an existing connection with an unchanged localhost base URL", async () => {
@@ -502,7 +502,7 @@ describe("llmApiKey.all RPC", () => {
     });
 
     expect(result).toEqual({ success: true });
-    expect(mockFetchLLMCompletion).toHaveBeenCalledTimes(1);
+    expect(mockGenerateLLMText).toHaveBeenCalledTimes(1);
   });
 
   it("should allow testUpdate without a new secret key when the base URL is unchanged", async () => {
@@ -536,11 +536,11 @@ describe("llmApiKey.all RPC", () => {
     });
 
     expect(result).toEqual({ success: true });
-    expect(mockFetchLLMCompletion).toHaveBeenCalledTimes(1);
-    const llmConnection = mockFetchLLMCompletion.mock.calls[0][0].llmConnection;
-    expect(llmConnection.baseURL).toBe("https://api.openai.com/v1");
-    expect(decrypt(llmConnection.secretKey)).toBe("sk-original");
-    expect(JSON.parse(decrypt(llmConnection.extraHeaders))).toEqual(
+    expect(mockGenerateLLMText).toHaveBeenCalledTimes(1);
+    const connection = mockGenerateLLMText.mock.calls[0][0].connection;
+    expect(connection.baseURL).toBe("https://api.openai.com/v1");
+    expect(decrypt(connection.secretKey)).toBe("sk-original");
+    expect(JSON.parse(decrypt(connection.extraHeaders))).toEqual(
       existingExtraHeaders,
     );
   });
@@ -577,11 +577,11 @@ describe("llmApiKey.all RPC", () => {
     });
 
     expect(result).toEqual({ success: true });
-    expect(mockFetchLLMCompletion).toHaveBeenCalledTimes(1);
-    const llmConnection = mockFetchLLMCompletion.mock.calls[0][0].llmConnection;
-    expect(llmConnection.baseURL).toBe("https://example.net/v1");
-    expect(decrypt(llmConnection.secretKey)).toBe("sk-rotated");
-    expect(llmConnection.extraHeaders).toBeUndefined();
+    expect(mockGenerateLLMText).toHaveBeenCalledTimes(1);
+    const connection = mockGenerateLLMText.mock.calls[0][0].connection;
+    expect(connection.baseURL).toBe("https://example.net/v1");
+    expect(decrypt(connection.secretKey)).toBe("sk-rotated");
+    expect(connection.extraHeaders).toBeUndefined();
   });
 
   it("should create and update an llm api key", async () => {

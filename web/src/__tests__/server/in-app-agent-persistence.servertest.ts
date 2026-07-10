@@ -2,7 +2,7 @@ vi.mock("@langfuse/shared/src/server", async () => {
   const actual = await vi.importActual("@langfuse/shared/src/server");
   return {
     ...actual,
-    fetchLLMCompletion: vi.fn(),
+    generateLLMText: vi.fn(),
   };
 });
 
@@ -15,7 +15,7 @@ import type { Plan } from "@langfuse/shared";
 import { prisma } from "@langfuse/shared/src/db";
 import {
   createOrgProjectAndApiKey,
-  fetchLLMCompletion,
+  generateLLMText,
 } from "@langfuse/shared/src/server";
 import { env } from "@/src/env.mjs";
 import {
@@ -41,7 +41,7 @@ vi.mock("@/src/server/auth", () => ({
   getServerAuthSession: vi.fn(),
 }));
 
-const mockFetchLLMCompletion = vi.mocked(fetchLLMCompletion);
+const mockGenerateLLMText = vi.mocked(generateLLMText);
 
 describe("in-app agent persistence", () => {
   const originalCloudRegion = env.NEXT_PUBLIC_LANGFUSE_CLOUD_REGION;
@@ -52,7 +52,7 @@ describe("in-app agent persistence", () => {
 
   afterEach(() => {
     (env as any).NEXT_PUBLIC_LANGFUSE_CLOUD_REGION = originalCloudRegion;
-    mockFetchLLMCompletion.mockReset();
+    mockGenerateLLMText.mockReset();
   });
 
   const createCaller = async (
@@ -477,7 +477,7 @@ describe("in-app agent persistence", () => {
         title: "My custom title",
         renamedByUserAt: expect.any(Date),
       });
-      expect(mockFetchLLMCompletion).not.toHaveBeenCalled();
+      expect(mockGenerateLLMText).not.toHaveBeenCalled();
     } finally {
       (env as any).LANGFUSE_AWS_BEDROCK_SMALL_MODEL = originalBedrockSmallModel;
     }
@@ -503,7 +503,7 @@ describe("in-app agent persistence", () => {
 
     try {
       (env as any).LANGFUSE_AWS_BEDROCK_SMALL_MODEL = "small-title-model";
-      mockFetchLLMCompletion.mockRejectedValue(new Error("Bedrock failed"));
+      mockGenerateLLMText.mockRejectedValue(new Error("Bedrock failed"));
 
       await expect(
         maybeInferAndPersistConversationTitle({

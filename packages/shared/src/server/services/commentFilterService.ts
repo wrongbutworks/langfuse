@@ -1,4 +1,5 @@
 import type { PrismaClient } from "../../db";
+import { InvalidRequestError } from "../../errors";
 import { type singleFilter } from "../../interfaces/filters";
 import {
   type CommentObjectType,
@@ -26,7 +27,7 @@ export function validateObjectIdCount(
 ): void {
   if (objectIds.length > COMMENT_FILTER_THRESHOLD) {
     const objectTypePlural = objectType.toLowerCase() + "s";
-    throw new Error(
+    throw new InvalidRequestError(
       `Comment filter matches ${objectIds.length.toLocaleString()} ${objectTypePlural} (limit: ${COMMENT_FILTER_THRESHOLD.toLocaleString()}). Please add additional filters to narrow your search.`,
     );
   }

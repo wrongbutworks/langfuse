@@ -244,7 +244,10 @@ export const handleBatchActionJob = async (
               orderBy: query.orderBy,
             })
           : tableName === BatchTableNames.Events
-            ? await getEventsStreamForAnnotationQueue(streamParams)
+            ? await getEventsStreamForAnnotationQueue({
+                ...streamParams,
+                orderBy: query.orderBy,
+              })
             : tableName === BatchTableNames.Observations
               ? await getObservationStream(streamParams)
               : await getDatabaseReadStreamPaginated({
@@ -428,7 +431,10 @@ export const handleBatchActionJob = async (
     };
     const dbReadStream =
       tableName === BatchTableNames.Events
-        ? await getEventsStreamForDataset(streamParams)
+        ? await getEventsStreamForDataset({
+            ...streamParams,
+            orderBy: query.orderBy,
+          })
         : await getObservationStream(streamParams);
 
     // Collect all observations
@@ -537,6 +543,7 @@ export const handleBatchActionJob = async (
       filter,
       searchQuery: query.searchQuery ?? undefined,
       searchType: query.searchType ?? ["id", "content"],
+      orderBy: query.orderBy,
       rowLimit: env.LANGFUSE_MAX_HISTORIC_EVAL_CREATION_LIMIT,
     });
 

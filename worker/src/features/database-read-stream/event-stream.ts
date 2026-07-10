@@ -9,6 +9,7 @@
 
 import {
   FilterCondition,
+  type OrderByState,
   type ScoreDataTypeType,
   TimeFilter,
   TracingSearchType,
@@ -43,6 +44,7 @@ export const getEventsStream = async (props: {
   filter: FilterCondition[] | null;
   searchQuery?: string;
   searchType?: TracingSearchType[];
+  orderBy?: OrderByState;
   rowLimit?: number;
 }): Promise<Readable> => {
   const {
@@ -51,6 +53,7 @@ export const getEventsStream = async (props: {
     filter = [],
     searchQuery,
     searchType,
+    orderBy,
     rowLimit = env.BATCH_EXPORT_ROW_LIMIT,
   } = props;
 
@@ -71,6 +74,7 @@ export const getEventsStream = async (props: {
     filter,
     searchQuery,
     searchType,
+    orderBy,
     rowLimit,
   });
   const { query, params: queryParams } = queryBuilder.buildWithParams();
@@ -288,6 +292,7 @@ export const getEventsStreamForDataset = async (props: {
   filter: FilterCondition[] | null;
   searchQuery?: string;
   searchType?: TracingSearchType[];
+  orderBy?: OrderByState;
   rowLimit?: number;
 }): Promise<Readable> => {
   const {
@@ -296,6 +301,7 @@ export const getEventsStreamForDataset = async (props: {
     filter = [],
     searchQuery,
     searchType,
+    orderBy,
     rowLimit = env.BATCH_EXPORT_ROW_LIMIT,
   } = props;
 
@@ -305,6 +311,7 @@ export const getEventsStreamForDataset = async (props: {
     filter,
     searchQuery,
     searchType,
+    orderBy,
     rowLimit,
   });
   const { query, params: queryParams } = queryBuilder
@@ -361,6 +368,7 @@ export const getEventsStreamForAnnotationQueue = async (props: {
   filter: FilterCondition[] | null;
   searchQuery?: string;
   searchType?: TracingSearchType[];
+  orderBy?: OrderByState;
   rowLimit?: number;
 }): Promise<Readable> => {
   const {
@@ -369,6 +377,7 @@ export const getEventsStreamForAnnotationQueue = async (props: {
     filter = [],
     searchQuery,
     searchType,
+    orderBy,
     rowLimit = env.BATCH_EXPORT_ROW_LIMIT,
   } = props;
 
@@ -378,6 +387,7 @@ export const getEventsStreamForAnnotationQueue = async (props: {
     filter,
     searchQuery,
     searchType,
+    orderBy,
     rowLimit,
   });
   const { query, params: queryParams } = queryBuilder

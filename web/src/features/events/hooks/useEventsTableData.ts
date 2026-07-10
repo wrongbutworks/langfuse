@@ -229,6 +229,8 @@ export function useEventsTableData({
       query: {
         filter: filterState,
         orderBy: orderByState,
+        searchQuery: searchQuery ?? undefined,
+        searchType,
       },
     });
     setSelectedRows({});

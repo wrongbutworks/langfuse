@@ -8,6 +8,7 @@ import {
 import {
   buildEventsBlobExportStreamQuery,
   buildEventsStreamQuery,
+  getEventsOrderByEntries,
 } from "./events-stream-query";
 
 const projectId = "project-characterization";
@@ -33,6 +34,14 @@ const buildSelection = ({ filter }: { filter: FilterCondition[] }) => {
 
   return { ...selection, ...built };
 };
+
+const simplifyOrderEntries = (
+  entries: ReturnType<typeof getEventsOrderByEntries>,
+) =>
+  entries.map(({ column, direction }) => ({
+    column: column.replaceAll('"', "").replace(/^e\./, ""),
+    direction,
+  }));
 
 describe("buildEventsStreamQuery", () => {
   it("builds the common event-stream selection", () => {
@@ -137,6 +146,46 @@ describe("buildEventsStreamQuery", () => {
 
     expect(eventOnlyFilters).toEqual([nativeFilter]);
     expect(Object.values(params)).toContain("quality");
+  });
+
+  it.each([
+    ["timestamp", "ASC"],
+    ["createdAt", "DESC"],
+    ["startTime", "ASC"],
+  ] as const)("normalizes the %s alias to start time %s", (column, order) => {
+    expect(
+      simplifyOrderEntries(getEventsOrderByEntries({ column, order })),
+    ).toEqual([
+      { column: "start_time", direction: order },
+      { column: "span_id", direction: order },
+    ]);
+  });
+
+  it.each(["ASC", "DESC"] as const)(
+    "uses the stable ID tie-breaker for non-time ordering in %s order",
+    (order) => {
+      expect(
+        simplifyOrderEntries(
+          getEventsOrderByEntries({ column: "name", order }),
+        ),
+      ).toEqual([
+        { column: "name", direction: order },
+        { column: "span_id", direction: order },
+      ]);
+    },
+  );
+
+  it("defaults to descending start time with a stable ID tie-breaker", () => {
+    expect(simplifyOrderEntries(getEventsOrderByEntries())).toEqual([
+      { column: "start_time", direction: "DESC" },
+      { column: "span_id", direction: "DESC" },
+    ]);
+  });
+
+  it("rejects positionInTrace ordering for the general Events stream", () => {
+    expect(() =>
+      getEventsOrderByEntries({ column: "positionInTrace", order: "ASC" }),
+    ).toThrow(InvalidRequestError);
   });
 });
 
